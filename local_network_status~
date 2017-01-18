@@ -1,0 +1,204 @@
+#!/bin/python
+# -*- coding: utf-8 -*-
+
+import subprocess
+import shlex
+import time
+import curses
+import time
+
+# Initialisierung von curses
+def init_curses():
+    # erzeugen des screens
+    stdscr = curses.initscr()
+    # verhindern, dass gedrueckte Tasten ausgegeben werden 
+    curses.noecho()
+    curses.cbreak()
+    stdscr.keypad(1)
+    # verstecken des cursers
+    curses.curs_set(0)
+    return stdscr
+
+# aufraeumen der Terminal-Einstellungen von curses
+def close_curses(stdscr):
+    curses.nocbreak()
+    stdscr.keypad(0)
+    curses.echo()
+    curses.endwin()
+
+# zeichen des Fensters fuer die WLAN-Daten
+def draw_window(stdscr):
+    stdscr.addstr( 0,0,"+------------------------------------------+")
+    stdscr.addstr( 1,0,"|  =============== wlp0s1 ===============  |")
+    stdscr.addstr( 2,0,"|  SSID:                                   |")
+    stdscr.addstr( 3,0,"|  Lokale IP:                              |")
+    stdscr.addstr( 4,0,"|  MAC:                                    |")
+    stdscr.addstr( 5,0,"|  Signalstarke:                  [    ]   |")
+    stdscr.addstr( 6,0,"|  Verf. Netzwerke:                        |")
+    stdscr.addstr( 7,0,"+------------------------------------------+")
+    stdscr.addstr( 8,0,"|  =============== enp0s0 ===============  |")
+    stdscr.addstr( 9,0,"|  Lokale IP:                              |")
+    stdscr.addstr(10,0,"|  MAC:                                    |")
+    stdscr.addstr(11,0,"+------------------------------------------+")
+
+# aktualisiert die wlp0s1-Daten auf dem screen
+def fill_wlan(screen, ssid, ip, mac, signal, signalbar, nets):
+    # Output verarbeiteter Daten
+    screen.addstr(2,23,"{:<18}".format(ssid))
+    screen.addstr(3,23,"{:<18}".format(ip))
+    screen.addstr(4,23,"{:<18}".format(mac))
+    screen.addstr(5,23,"{:<11}".format(signal))
+    screen.addstr(5,35,"{:<4}".format(signalbar))
+    screen.addstr(6,23,"{:<18}".format(nets))
+
+# aktualisiert die enp0s0-Daten auf dem screen
+def fill_lan(screen, ip, mac):
+    # Output verarbeiteter Daten
+    screen.addstr( 9,23,"{:<18}".format(ip))
+    screen.addstr(10,23,"{:<18}".format(mac))
+
+def check_wlan(last_nets):
+    # Systemcommandos zum sammeln der noetingen Infos
+    p1 = subprocess.Popen('qvm-run -p sys-net "iw dev wlp0s1 link"', \
+                            stdout=subprocess.PIPE, \
+                            stderr=subprocess.PIPE, \
+                            shell=True)
+    p2 = subprocess.Popen('qvm-run -p sys-net "ifconfig wlp0s1"', \
+                            stdout=subprocess.PIPE, \
+                            stderr=subprocess.PIPE, \
+                            shell=True)
+    p3 = subprocess.Popen('qvm-run -p sys-net "sudo iw dev wlp0s1 scan | grep SSID"', \
+                            stdout=subprocess.PIPE, \
+                            stderr=subprocess.PIPE, \
+                            shell=True)
+    # Output speichern
+    p1 = p1.communicate()
+    p2 = p2.communicate()
+    p3 = p3.communicate()
+
+    # Output zuschnibbeln
+    output1 = p1[0].strip().split("\n")
+    output2 = p2[0].strip().split("\n")
+    output3 = p3[0].strip().split("\n")
+
+    ssid = output1[1].split(" ")[1]
+    signal = output1[5].split(" ")[1]
+    ip = output2[1].strip().split(" ")[1]
+    mac = output2[3].strip().split(" ")[1]
+
+    # falls error bei commando 3 (device is busy)
+    if(p3[1] != ''):
+        nets = last_nets + "*"
+    else:
+        nets = str(len(output3))
+
+    # Erstellen einer kleinen Statusanzeige fuer das WLAN-Signal
+    signalbar = ""
+    if(int(signal) >= -40):
+        signalbar = "===="
+    elif(int(signal) < -40 and signal >= -60):
+        signalbar = "==="
+    elif(int(signal) < -60 and signal >= -80):
+        signalbar = "=="
+    else:
+        signalbar = "="
+
+    signal = str(signal) + " dBm"
+
+    # max. 18 Zeichen fuer die SSID
+    if(len(ssid) > 18):
+        ssid = ssid[:16] + ".."
+    return (ssid, ip, mac, signal, signalbar, nets)
+
+def check_lan():
+    # Systemcommando zum sammeln der noetingen Infos
+    p1 = subprocess.Popen('qvm-run -p sys-net "ifconfig enp0s0"', \
+                            stdout=subprocess.PIPE, shell=True)
+    # Output speichern
+    p1 = p1.communicate()
+
+    # Output zuschnibbeln
+    output1 = p1[0].strip().split("\n")
+    ip = output1[1].strip().split(" ")[1]
+    mac = output1[3].strip().split(" ")[1]
+    return (ip, mac)
+
+def main():
+    # Deklaration der Variablen
+    wln0s1_ssid = ""
+    wln0s1_signal = "" 
+    wln0s1_ip = ""
+    wln0s1_mac = ""
+    wln0s1_nets = ""
+    enp0s0_ip = ""
+    enp0s0_mac = ""
+
+    # init des curses screens
+    stdscr = init_curses()
+
+    # Window zeichen
+    draw_window(stdscr)
+
+    # Main-Loop in try-catch damit bei <Ctrl-C> curses geschlossen wird
+    try:
+        while(True):
+            # checken ob interfaces up oder down
+            p0 = subprocess.Popen('qvm-run -p sys-net "cat /sys/class/net/wlp0s1/operstate"', \
+                                    stdout=subprocess.PIPE, \
+                                    stderr=subprocess.PIPE, \
+                                    shell=True)
+            p1 = subprocess.Popen('qvm-run -p sys-net "cat /sys/class/net/enp0s0/operstate"', \
+                                    stdout=subprocess.PIPE, \
+                                    stderr=subprocess.PIPE, \
+                                    shell=True)
+            wlp0s1_operstate = p0.communicate()[0]
+            enp0s0_operstate = p1.communicate()[0]
+
+            # falls nicht mit  WLAN verbunden, als offline markieren.
+            if(not "up" in wlp0s1_operstate.strip()):
+                wln0s1_ssid = "---"
+                wln0s1_signal = "---"
+                wln0s1_ip = "---"
+                wln0s1_mac = "---"
+                wln0s1_nets = "---"
+                wln0s1_signalbar = "xxxx"
+            else:
+                # Netzwerkdaten aktualisieren
+                (wln0s1_ssid, \
+                    wln0s1_ip, \
+                    wln0s1_mac, \
+                    wln0s1_signal, \
+                    wln0s1_signalbar, \
+                    wln0s1_nets) = check_wlan(wln0s1_nets)
+
+            # falls nicht mit LAN verbunden, als offline markieren.
+            if(not "up" in enp0s0_operstate.strip()):
+                enp0s0_ip = "---"
+                enp0s0_mac = "---"
+            else:
+                # Netzwerkdaten aktualisieren
+                enp0s0_ip, enp0s0_mac = check_lan() 
+
+            # Daten auf dem Screen aktualisieren
+            fill_wlan(stdscr,\
+                        wln0s1_ssid,\
+                        wln0s1_ip,\
+                        wln0s1_mac,\
+                        wln0s1_signal,\
+                        wln0s1_signalbar,\
+                        wln0s1_nets)
+            fill_lan(stdscr, enp0s0_ip, enp0s0_mac)
+            # screen aktualisieren
+            stdscr.refresh()
+            # Delay um 5 sek.
+            time.sleep(5)
+    except KeyboardInterrupt:
+        pass
+    except Exception:
+        pass
+    # aufraeumen und beenden
+    close_curses(stdscr)
+    exit(1)
+
+if __name__ == "__main__":
+    main()

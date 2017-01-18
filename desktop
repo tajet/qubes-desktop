@@ -1,0 +1,11 @@
+#!/bin/sh
+
+xfce4-terminal --hide-menubar --hide-borders --hide-toolbar --geometry=87x15+0+260 -e qvm-ls-slim &
+sleep 1
+xfce4-terminal --hide-menubar --hide-borders --hide-toolbar --geometry=41x8+406+0 -e show_ips &
+sleep 1
+#xfce4-terminal --hide-menubar --hide-borders --hide-toolbar --geometry=103x48+995+0 -e top &
+#sleep 1
+xfce4-terminal --hide-menubar --hide-borders --hide-toolbar --geometry=44x13+0+0 -e local_network_status &
+sleep 1
+xfce4-terminal --hide-menubar --hide-borders --hide-toolbar --geometry=60x13+800+0 &

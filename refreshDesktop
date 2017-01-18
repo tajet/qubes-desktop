@@ -1,0 +1,4 @@
+#!/bin/bash
+
+pkill xfce4-terminal
+desktop

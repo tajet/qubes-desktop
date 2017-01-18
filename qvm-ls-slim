@@ -1,0 +1,131 @@
+#!/bin/python
+
+import curses
+import time 
+import subprocess
+
+# Initialisierung von curses
+def init_curses():
+    # erzeugen des screens
+    stdscr = curses.initscr()
+    # verhindern, dass gedrueckte Tasten ausgegeben werden 
+    curses.noecho()
+    curses.cbreak()
+    stdscr.keypad(1)
+    # verstecken des cursers
+    curses.curs_set(0)
+    return stdscr
+
+# aufraeumen der Terminal-Einstellungen von curses
+def close_curses(stdscr):
+    curses.nocbreak()
+    stdscr.keypad(0)
+    curses.echo()
+    curses.endwin()
+
+# darstellen der nicht heruntergefahrenden VMs
+def draw_vms(stdscr, field_length, fields_to_display, vm_list):
+    line = "+"
+    header = "|"
+    # erzeugen der Trennlinien und des Headers
+    for f in fields_to_display:
+        line += "-{1:->{0}}-+".format(field_length[f], "-")
+        header += " {1:>{0}} |".format(field_length[f], f)
+    top_line = "+{}+".format(("-" * (len(line) - 2)))
+    title = "|  {1:=^{0}}  |".format((len(line) - 6), " QVM-LS ")
+
+    # Output
+    stdscr.addstr(0,0, top_line)
+    stdscr.addstr(1,0, title)
+    stdscr.addstr(2,0, line)
+    stdscr.addstr(3,0, header)
+    stdscr.addstr(4,0, line)
+
+    # Marke wo der naechste Output entsteht
+    y_offset = 5
+    # Ausgabe der Daten einer (nicht heruntergefahrenden) VM
+    for vm in vm_list:
+        if(vm["state"] == "Halted"):
+            continue
+        data = "|" 
+        for f in fields_to_display:
+            data += " {1:>{0}} |".format(field_length[f], vm[f])
+        stdscr.addstr(y_offset,0, data)
+        y_offset += 1
+
+    # Schlusslinie
+    stdscr.addstr(y_offset,0, line)
+   
+def main():
+    # Definition welche Kategorien ausgegeben werden sollen
+    fields_to_display = ["name", \
+                         "state", \
+                         "updbl", \
+                         "type", \
+                         "template", \
+                         "netvm"]
+
+    # init des curses screens
+    stdscr = init_curses()
+
+    # Main-Loop in try-catch damit bei <Ctrl-C> curses geschlossen wird
+    try:
+        while(True):
+            vm_list = []
+            fields = []
+            field_length = {}
+
+            # daten der VMs einlesen
+            p1 = subprocess.Popen("qvm-ls", \
+                                    stdout=subprocess.PIPE, \
+                                    stderr=subprocess.PIPE, \
+                                    shell=True)
+            output = p1.communicate()
+            output = output[0]
+            output = output.strip().split("\n")
+            
+            # array mit dev verschiedenen Kategorien erstellen
+            for f in output[1].split("|"):
+                fields.append(f.strip())
+
+            # Array mit allen VM und ihren Daten erstellen.
+            # Daten als Dictionary in den Feldern das Arrays.
+            # Skip der ersten 3 Zeilen, da diese der Header von qvm-ls sind.
+            for l in output[3:]:
+                line = l.split("|")
+
+                vm_data = {}
+                for i, f in enumerate(line[:-1]):
+                    item = fields[i]
+                    vm_data[item] = f.strip()
+                vm_list.append(vm_data)
+            
+            # Anzahl der Zeichen vom laengsten Eintrag einer Kategorie
+            # ermitteln.
+            # Daten werden in einem Dictionary gespeichert: Kategrorie:max_len
+            for f in fields[:-1]:
+                l = len(f)
+                for vm  in vm_list:
+                    new_l = len(vm[f]) 
+                    if(new_l > l):
+                        l = new_l
+                field_length[f] = l
+
+            # clear screen um Artefakte zu verhindern
+            stdscr.clear()
+            # Output generieren
+            draw_vms(stdscr, field_length, fields_to_display, vm_list)
+            # Screen neu zeichnen 
+            stdscr.refresh()
+            # 5 sek. warten
+            time.sleep(5)
+    except KeyboardInterrupt:
+        pass
+    except Exception:
+        pass
+    # aufraeumen und beenden
+    close_curses(stdscr)
+    exit()
+
+if __name__ == "__main__":
+    main()

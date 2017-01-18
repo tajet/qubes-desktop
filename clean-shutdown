@@ -1,0 +1,7 @@
+#!/bin/bash
+if ! kdialog --warningcontinuecancel 'shutdown?'; then
+	exit;
+fi
+qvm-shutdown --all
+sync
+poweroff
